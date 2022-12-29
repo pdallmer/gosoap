@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strings"
 )
 
 var (
-	soapPrefix = "soap"
+	soapPrefix                            = "soap"
 	customEnvelopeAttrs map[string]string = nil
 )
 
@@ -70,26 +71,44 @@ type tokenData struct {
 	data []xml.Token
 }
 
+func parseAttributes(key string) (name string, attribnutes xml.Attr) {
+	reName := regexp.MustCompile(`\s[^\s]+$`)
+	reAttr := regexp.MustCompile(`^[^\s]+`)
+	name = reName.ReplaceAllString(key, ``)
+	attrstr := strings.Split(reAttr.ReplaceAllString(key, ``), "=")
+	attr := xml.Attr{}
+	if len(attrstr) > 1 {
+		attr = xml.Attr{
+			Name: xml.Name{
+				Space: "",
+				Local: strings.TrimSpace(attrstr[0]),
+			},
+			Value: strings.Trim(attrstr[1], "\""),
+		}
+	}
+	return name, attr
+}
+
 func (tokens *tokenData) recursiveEncode(hm interface{}) {
 	v := reflect.ValueOf(hm)
-	re := regexp.MustCompile(`\s[^\s]+$`)
 
 	switch v.Kind() {
 	case reflect.Map:
 		for _, key := range v.MapKeys() {
+			name, attr := parseAttributes(key.String())
 			t := xml.StartElement{
 				Name: xml.Name{
 					Space: "",
-					Local: key.String(),
+					Local: name,
+				},
+				Attr: []xml.Attr{
+					attr,
 				},
 			}
 
 			tokens.data = append(tokens.data, t)
 			tokens.recursiveEncode(v.MapIndex(key).Interface())
-			tokens.data = append(tokens.data, xml.EndElement{Name: xml.Name{
-				Space: "",
-				Local: re.ReplaceAllString(t.Name.Local, ``),
-			}})
+			tokens.data = append(tokens.data, xml.EndElement{Name: t.Name})
 		}
 	case reflect.Slice:
 		for i := 0; i < v.Len(); i++ {
@@ -98,19 +117,20 @@ func (tokens *tokenData) recursiveEncode(hm interface{}) {
 	case reflect.Array:
 		if v.Len() == 2 {
 			label := v.Index(0).Interface()
+			name, attr := parseAttributes(label.(string))
 			t := xml.StartElement{
 				Name: xml.Name{
 					Space: "",
-					Local: label.(string),
+					Local: name,
+				},
+				Attr: []xml.Attr{
+					attr,
 				},
 			}
 
 			tokens.data = append(tokens.data, t)
 			tokens.recursiveEncode(v.Index(1).Interface())
-			tokens.data = append(tokens.data, xml.EndElement{Name: xml.Name{
-				Space: "",
-				Local: re.ReplaceAllString(t.Name.Local, ``),
-			}})
+			tokens.data = append(tokens.data, xml.EndElement{Name: t.Name})
 		}
 	case reflect.String:
 		content := xml.CharData(v.String())
@@ -138,7 +158,7 @@ func (tokens *tokenData) startEnvelope() {
 		e.Attr = make([]xml.Attr, 0)
 		for local, value := range customEnvelopeAttrs {
 			e.Attr = append(e.Attr, xml.Attr{
-				Name: xml.Name{Space: "", Local: local},
+				Name:  xml.Name{Space: "", Local: local},
 				Value: value,
 			})
 		}
