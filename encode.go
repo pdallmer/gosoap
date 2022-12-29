@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"reflect"
+	"regexp"
 )
 
 var (
@@ -71,6 +72,7 @@ type tokenData struct {
 
 func (tokens *tokenData) recursiveEncode(hm interface{}) {
 	v := reflect.ValueOf(hm)
+	re := regexp.MustCompile(`\s[^\s]+$`)
 
 	switch v.Kind() {
 	case reflect.Map:
@@ -84,7 +86,10 @@ func (tokens *tokenData) recursiveEncode(hm interface{}) {
 
 			tokens.data = append(tokens.data, t)
 			tokens.recursiveEncode(v.MapIndex(key).Interface())
-			tokens.data = append(tokens.data, xml.EndElement{Name: t.Name})
+			tokens.data = append(tokens.data, xml.EndElement{Name: xml.Name{
+				Space: "",
+				Local: re.ReplaceAllString(t.Name.Local, ``),
+			}})
 		}
 	case reflect.Slice:
 		for i := 0; i < v.Len(); i++ {
@@ -102,7 +107,10 @@ func (tokens *tokenData) recursiveEncode(hm interface{}) {
 
 			tokens.data = append(tokens.data, t)
 			tokens.recursiveEncode(v.Index(1).Interface())
-			tokens.data = append(tokens.data, xml.EndElement{Name: t.Name})
+			tokens.data = append(tokens.data, xml.EndElement{Name: xml.Name{
+				Space: "",
+				Local: re.ReplaceAllString(t.Name.Local, ``),
+			}})
 		}
 	case reflect.String:
 		content := xml.CharData(v.String())
